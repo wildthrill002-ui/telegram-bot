@@ -25,7 +25,7 @@ ASSEMBLYAI_API_KEY = os.environ["ASSEMBLYAI_API_KEY"]
 
 aai.settings.api_key = ASSEMBLYAI_API_KEY
 
-TODOIST_BASE = "https://api.todoist.com/rest/v2"
+TODOIST_BASE = "https://api.todoist.com/api/v1"
 TODOIST_HEADERS = {"Authorization": f"Bearer {TODOIST_TOKEN}"}
 
 MONTHS_RU = {
@@ -165,7 +165,7 @@ def todoist_complete_task(task_id: str) -> None:
 
 
 def todoist_update_task(task_id: str, due_date: str) -> None:
-    resp = requests.post(
+    resp = requests.patch(
         f"{TODOIST_BASE}/tasks/{task_id}",
         headers=TODOIST_HEADERS,
         json={"due_date": due_date},
