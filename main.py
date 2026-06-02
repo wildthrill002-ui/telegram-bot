@@ -49,22 +49,74 @@ def parse_date(text: str) -> tuple[str | None, str | None]:
     if "сегодня" in text_lower:
         return today.isoformat(), "сегодня"
 
-    # "на 26 марта", "на 5 апреля" etc.
-    match = re.search(r"на\s+(\d{1,2})\s+([а-яё]+)", text_lower)
-    if match:
-        day = int(match.group(1))
-        month_word = match.group(2)
-        month = MONTHS_RU.get(month_word)
-        if month:
-            year = today.year
-            try:
-                candidate = date(year, month, day)
-            except ValueError:
-                return None, None
-            if candidate < today:
-                candidate = date(year + 1, month, day)
-            label = f"{day} {month_word}"
-            return candidate.isoformat(), label
+    def _try(day: int, month: int, year: int, label: str) -> tuple[str | None, str | None]:
+        try:
+            return date(year, month, day).isoformat(), label
+        except ValueError:
+            return None, None
+
+    # DDMMYYYY — 8 digits, e.g. 26032026
+    m = re.search(r"\b(\d{2})(\d{2})(\d{4})\b", text)
+    if m:
+        iso, lbl = _try(int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                        f"{m.group(1)}.{m.group(2)}.{m.group(3)}")
+        if iso:
+            return iso, lbl
+
+    # DD.MM.YYYY
+    m = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b", text)
+    if m:
+        iso, lbl = _try(int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                        f"{m.group(1)}.{m.group(2)}.{m.group(3)}")
+        if iso:
+            return iso, lbl
+
+    # DD.MM.YY
+    m = re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2})\b", text)
+    if m:
+        year = 2000 + int(m.group(3))
+        iso, lbl = _try(int(m.group(1)), int(m.group(2)), year,
+                        f"{m.group(1)}.{m.group(2)}.{year}")
+        if iso:
+            return iso, lbl
+
+    # DD MM YYYY — space-separated numbers, e.g. 26 03 2026
+    m = re.search(r"\b(\d{1,2})\s+(\d{1,2})\s+(\d{4})\b", text)
+    if m:
+        iso, lbl = _try(int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                        f"{m.group(1)}.{m.group(2)}.{m.group(3)}")
+        if iso:
+            return iso, lbl
+
+    # DDMMYY — 6 digits, e.g. 260326
+    m = re.search(r"\b(\d{2})(\d{2})(\d{2})\b", text)
+    if m:
+        year = 2000 + int(m.group(3))
+        iso, lbl = _try(int(m.group(1)), int(m.group(2)), year,
+                        f"{m.group(1)}.{m.group(2)}.{year}")
+        if iso:
+            return iso, lbl
+
+    # "5 июня 2026" or "на 5 июня 2026" — Russian month with explicit year
+    m = re.search(r"(?:на\s+)?(\d{1,2})\s+([а-яё]+)\s+(\d{4})", text_lower)
+    if m:
+        day, month_word, year = int(m.group(1)), m.group(2), int(m.group(3))
+        mo = MONTHS_RU.get(month_word)
+        if mo:
+            iso, _ = _try(day, mo, year, "")
+            if iso:
+                return iso, f"{day} {month_word} {year}"
+
+    # "5 июня" or "на 26 марта" — Russian month, auto year
+    m = re.search(r"(?:на\s+)?(\d{1,2})\s+([а-яё]+)", text_lower)
+    if m:
+        day, month_word = int(m.group(1)), m.group(2)
+        mo = MONTHS_RU.get(month_word)
+        if mo:
+            for year in (today.year, today.year + 1):
+                iso, _ = _try(day, mo, year, "")
+                if iso and date.fromisoformat(iso) >= today:
+                    return iso, f"{day} {month_word}"
 
     return None, None
 
@@ -74,8 +126,15 @@ def strip_date_phrase(text: str) -> str:
     text = re.sub(r"послезавтра", "", text, flags=re.IGNORECASE)
     text = re.sub(r"завтра", "", text, flags=re.IGNORECASE)
     text = re.sub(r"сегодня", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"на\s+\d{1,2}\s+[а-яё]+", "", text, flags=re.IGNORECASE)
-    return text.strip()
+    # Numeric formats — longest patterns first to avoid partial matches
+    text = re.sub(r"\b\d{2}\d{2}\d{4}\b", "", text)                           # DDMMYYYY
+    text = re.sub(r"\b\d{1,2}\.\d{1,2}\.\d{4}\b", "", text)                   # DD.MM.YYYY
+    text = re.sub(r"\b\d{1,2}\.\d{1,2}\.\d{2}\b", "", text)                   # DD.MM.YY
+    text = re.sub(r"\b\d{1,2}\s+\d{1,2}\s+\d{4}\b", "", text)                 # DD MM YYYY
+    text = re.sub(r"\b\d{2}\d{2}\d{2}\b", "", text)                            # DDMMYY
+    # Russian month names with optional "на" and optional year
+    text = re.sub(r"(?:на\s+)?\d{1,2}\s+[а-яё]+(?:\s+\d{4})?", "", text, flags=re.IGNORECASE)
+    return re.sub(r"\s{2,}", " ", text).strip()
 
 
 def extract_intent(text: str) -> str:
