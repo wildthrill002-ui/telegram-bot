@@ -166,7 +166,7 @@ def todoist_complete_task(task_id: str) -> None:
 
 
 def todoist_update_task(task_id: str, due_date: str) -> None:
-    resp = requests.patch(
+    resp = requests.post(
         f"{TODOIST_BASE}/tasks/{task_id}",
         headers=TODOIST_HEADERS,
         json={"due_date": due_date},
