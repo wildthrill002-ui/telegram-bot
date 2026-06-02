@@ -138,7 +138,8 @@ def todoist_get_tasks() -> list[dict]:
         timeout=10,
     )
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    return data.get("results", data)
 
 
 def todoist_create_task(name: str, due_date: str | None = None) -> dict:
